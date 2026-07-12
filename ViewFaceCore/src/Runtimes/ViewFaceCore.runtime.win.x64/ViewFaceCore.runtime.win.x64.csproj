@@ -1,0 +1,32 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+	<PropertyGroup>
+		<TargetFramework>netstandard2.0</TargetFramework>
+	</PropertyGroup>
+
+	<!--项目引用方式-->
+	<ItemGroup>
+		<!--调式文件-->
+		<None Include="..\..\Bridges\Windows\ViewFaceBridge\bin\$(Configuration)\x64\ViewFaceBridge.pdb" Link="viewfacecore\win\x64\ViewFaceBridge.pdb" CopyToOutputDirectory="PreserveNewest" />
+		
+		<None Include="..\..\Bridges\Windows\ViewFaceBridge\bin\$(Configuration)\x64\ViewFaceBridge.dll" Link="viewfacecore\win\x64\ViewFaceBridge.dll" CopyToOutputDirectory="PreserveNewest" />
+
+		<None Include="..\..\SeetaFace\index\build\bin\x64\tennis.dll" Link="viewfacecore\win\x64\tennis.dll" CopyToOutputDirectory="PreserveNewest" />
+		<None Condition="Exists('..\..\SeetaFace\index\build\bin\x64\tennis_haswell.dll')" Include="..\..\SeetaFace\index\build\bin\x64\tennis_haswell.dll" Link="viewfacecore\win\x64\tennis_haswell.dll" CopyToOutputDirectory="PreserveNewest" />
+		<None Condition="Exists('..\..\SeetaFace\index\build\bin\x64\tennis_pentium.dll')" Include="..\..\SeetaFace\index\build\bin\x64\tennis_pentium.dll" Link="viewfacecore\win\x64\tennis_pentium.dll" CopyToOutputDirectory="PreserveNewest" />
+		<None Condition="Exists('..\..\SeetaFace\index\build\bin\x64\tennis_sandy_bridge.dll')" Include="..\..\SeetaFace\index\build\bin\x64\tennis_sandy_bridge.dll" Link="viewfacecore\win\x64\tennis_sandy_bridge.dll" CopyToOutputDirectory="PreserveNewest" />
+		<None Include="..\..\SeetaFace\index\build\bin\x64\SeetaAgePredictor600.dll" Link="viewfacecore\win\x64\SeetaAgePredictor600.dll" CopyToOutputDirectory="PreserveNewest" />
+		<None Include="..\..\SeetaFace\index\build\bin\x64\SeetaAuthorize.dll" Link="viewfacecore\win\x64\SeetaAuthorize.dll" CopyToOutputDirectory="PreserveNewest" />
+		<None Include="..\..\SeetaFace\index\build\bin\x64\SeetaEyeStateDetector200.dll" Link="viewfacecore\win\x64\SeetaEyeStateDetector200.dll" CopyToOutputDirectory="PreserveNewest" />
+		<None Include="..\..\SeetaFace\index\build\bin\x64\SeetaFaceAntiSpoofingX600.dll" Link="viewfacecore\win\x64\SeetaFaceAntiSpoofingX600.dll" CopyToOutputDirectory="PreserveNewest" />
+		<None Include="..\..\SeetaFace\index\build\bin\x64\SeetaFaceDetector600.dll" Link="viewfacecore\win\x64\SeetaFaceDetector600.dll" CopyToOutputDirectory="PreserveNewest" />
+		<None Include="..\..\SeetaFace\index\build\bin\x64\SeetaFaceLandmarker600.dll" Link="viewfacecore\win\x64\SeetaFaceLandmarker600.dll" CopyToOutputDirectory="PreserveNewest" />
+		<None Include="..\..\SeetaFace\index\build\bin\x64\SeetaFaceRecognizer610.dll" Link="viewfacecore\win\x64\SeetaFaceRecognizer610.dll" CopyToOutputDirectory="PreserveNewest" />
+		<None Include="..\..\SeetaFace\index\build\bin\x64\SeetaFaceTracking600.dll" Link="viewfacecore\win\x64\SeetaFaceTracking600.dll" CopyToOutputDirectory="PreserveNewest" />
+		<None Include="..\..\SeetaFace\index\build\bin\x64\SeetaGenderPredictor600.dll" Link="viewfacecore\win\x64\SeetaGenderPredictor600.dll" CopyToOutputDirectory="PreserveNewest" />
+		<None Include="..\..\SeetaFace\index\build\bin\x64\SeetaMaskDetector200.dll" Link="viewfacecore\win\x64\SeetaMaskDetector200.dll" CopyToOutputDirectory="PreserveNewest" />
+		<None Include="..\..\SeetaFace\index\build\bin\x64\SeetaPoseEstimation600.dll" Link="viewfacecore\win\x64\SeetaPoseEstimation600.dll" CopyToOutputDirectory="PreserveNewest" />
+		<None Include="..\..\SeetaFace\index\build\bin\x64\SeetaQualityAssessor300.dll" Link="viewfacecore\win\x64\SeetaQualityAssessor300.dll" CopyToOutputDirectory="PreserveNewest" />
+	</ItemGroup>
+
+</Project>

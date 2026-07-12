@@ -1,0 +1,22 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>WinExe</OutputType>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <RootNamespace>ShotSort</RootNamespace>
+    <AssemblyName>ShotSort</AssemblyName>
+    <UseWindowsForms>true</UseWindowsForms>
+    <ApplicationIcon />
+    <Nullable>enable</Nullable>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\ViewFaceCore\src\ViewFaceCore\ViewFaceCore.csproj" />
+    <ProjectReference Include="..\ViewFaceCore\src\Extensions\ViewFaceCore.Extension.SkiaSharp\ViewFaceCore.Extension.SkiaSharp.csproj" />
+    <PackageReference Include="ViewFaceCore.all_models" Version="6.0.7" />
+    <PackageReference Include="ViewFaceCore.runtime.win.x64" Version="6.0.6" />
+    <PackageReference Include="ViewFaceCore.runtime.win.vc" Version="6.0.0" />
+    <PackageReference Include="Magick.NET-Q16-AnyCPU" Version="14.4.0" />
+  </ItemGroup>
+
+</Project>

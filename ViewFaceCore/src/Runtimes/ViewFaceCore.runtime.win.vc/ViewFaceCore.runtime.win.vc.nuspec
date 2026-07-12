@@ -1,0 +1,34 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<package xmlns="http://schemas.microsoft.com/packaging/2010/07/nuspec.xsd">
+	<metadata>
+		<id>ViewFaceCore.runtime.win.vc</id>
+		<version>0.0.0</version>
+		<authors>View, SeetaFace</authors>
+		<owners>ViewFaceCore</owners>
+		<requireLicenseAcceptance>true</requireLicenseAcceptance>
+		<license type="file">SeetaFace_LICENSE</license>
+		<icon>View-Logo.png</icon>
+		<description>VC++ Native libraries for Windows (x64/x86)</description>
+	</metadata>
+	<files>
+		<file src="vcruntime\x64\msvcp140.dll" target="build\viewfacecore\win\x64\msvcp140.dll" />
+		<file src="vcruntime\x64\msvcp140d.dll" target="build\viewfacecore\win\x64\msvcp140d.dll" />
+		<file src="vcruntime\x64\ucrtbased.dll" target="build\viewfacecore\win\x64\ucrtbased.dll" />
+		<file src="vcruntime\x64\vcomp140.dll" target="build\viewfacecore\win\x64\vcomp140.dll" />
+		<file src="vcruntime\x64\vcruntime140.dll" target="build\viewfacecore\win\x64\vcruntime140.dll" />
+		<file src="vcruntime\x64\vcruntime140d.dll" target="build\viewfacecore\win\x64\vcruntime140d.dll"/>
+		<file src="vcruntime\x64\vcruntime140_1.dll" target="build\viewfacecore\win\x64\vcruntime140_1.dll" />
+		<file src="vcruntime\x64\vcruntime140_1d.dll" target="build\viewfacecore\win\x64\vcruntime140_1d.dll" />
+		
+		<file src="vcruntime\x86\msvcp140.dll" target="build\viewfacecore\win\x86\msvcp140.dll" />
+		<file src="vcruntime\x86\msvcp140d.dll" target="build\viewfacecore\win\x86\msvcp140d.dll" />
+		<file src="vcruntime\x86\ucrtbased.dll" target="build\viewfacecore\win\x86\ucrtbased.dll" />
+		<file src="vcruntime\x86\vcomp140.dll" target="build\viewfacecore\win\x86\vcomp140.dll" />
+		<file src="vcruntime\x86\vcruntime140.dll" target="build\viewfacecore\win\x86\vcruntime140.dll" />
+		<file src="vcruntime\x86\vcruntime140d.dll" target="build\viewfacecore\win\x86\vcruntime140d.dll"/>
+
+		<file src="ViewFaceCore.runtime.win.vc.targets" target="build\ViewFaceCore.runtime.win.vc.targets" />
+		<file src="..\..\..\assets\logos\View-Logo.png" target="View-Logo.png" />
+		<file src="..\..\..\SeetaFace_LICENSE" target="SeetaFace_LICENSE" />
+	</files>
+</package>
