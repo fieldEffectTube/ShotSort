@@ -8,7 +8,7 @@
 
 | 平台 | 下载 |
 |------|------|
-| Windows x64 (免安装) | [百度网盘](XXXXX) |
+| Windows x64 (免安装) | [百度网盘](链接: https://pan.baidu.com/s/1f3TNKgHiHgdPPHVlany2vA?pwd=garx 提取码: garx) |
 
 下载后解压，双击 `ShotSort.exe` 即可运行，无需安装 .NET 运行时。
 
