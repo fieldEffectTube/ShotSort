@@ -1,22 +1,29 @@
+using System;
+using System.Drawing;
+using System.IO;
+using System.Reflection;
+
 namespace ShotSort.Properties
 {
     internal static class Resources
     {
-        private static System.Resources.ResourceManager? _manager;
+        private static Icon? _appIcon;
 
-        internal static System.Resources.ResourceManager ResourceManager
+        internal static Icon AppIcon
         {
             get
             {
-                if (_manager == null)
-                    _manager = new System.Resources.ResourceManager("ShotSort.Properties.Resources", typeof(Resources).Assembly);
-                return _manager;
+                if (_appIcon == null)
+                {
+                    var assembly = Assembly.GetExecutingAssembly();
+                    var stream = assembly.GetManifestResourceStream("ShotSort.app.ico");
+                    if (stream != null)
+                        _appIcon = new Icon(stream);
+                    else
+                        _appIcon = SystemIcons.Application;
+                }
+                return _appIcon;
             }
-        }
-
-        internal static System.Drawing.Icon AppIcon
-        {
-            get => (System.Drawing.Icon?)ResourceManager.GetObject("AppIcon") ?? System.Drawing.SystemIcons.Application;
         }
     }
 }

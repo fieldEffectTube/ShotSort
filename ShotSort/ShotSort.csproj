@@ -13,6 +13,10 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <EmbeddedResource Include="app.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
     <ProjectReference Include="..\ViewFaceCore\src\ViewFaceCore\ViewFaceCore.csproj" />
     <ProjectReference Include="..\ViewFaceCore\src\Extensions\ViewFaceCore.Extension.SkiaSharp\ViewFaceCore.Extension.SkiaSharp.csproj" />
     <PackageReference Include="ViewFaceCore.all_models" Version="6.0.7" />
