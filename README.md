@@ -1,6 +1,6 @@
 # ShotSort
 
-基于 AI 人脸检测的照片快速筛选分类工具，帮助摄影师从大量照片中高效挑选出最佳人像。
+基于预训练模型的 AI 人脸检测的照片快速筛选分类工具，通过AI预筛和简单的键盘快捷键手动操作，帮助摄影师从大量照片中高效分拣照片。
 
 ![Version](https://img.shields.io/badge/version-1.0.0-blue) ![.NET](https://img.shields.io/badge/.NET-8.0-purple) ![Platform](https://img.shields.io/badge/platform-Windows%20x64-lightgrey)
 
