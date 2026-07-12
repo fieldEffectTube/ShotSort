@@ -1,8 +1,0 @@
-﻿{
-	"solution": {
-		"path": "ViewFaceCore.sln",
-		"projects": [
-			"ViewFaceCore\\ViewFaceCore.csproj"
-		]
-	}
-}

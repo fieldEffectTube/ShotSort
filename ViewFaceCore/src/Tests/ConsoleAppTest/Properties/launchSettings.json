@@ -1,8 +1,0 @@
-{
-  "profiles": {
-    "ConsoleAppTest": {
-      "commandName": "Project",
-      "nativeDebugging": true
-    }
-  }
-}

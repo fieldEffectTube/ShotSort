@@ -1,8 +1,0 @@
-{
-  "profiles": {
-    "ViewFaceCoreSkiaSharpTest": {
-      "commandName": "Project",
-      "nativeDebugging": true
-    }
-  }
-}
