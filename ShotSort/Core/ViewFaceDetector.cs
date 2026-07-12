@@ -4,6 +4,7 @@ using System.Collections.Generic;
 using System.Drawing;
 using System.IO;
 using System.Linq;
+using System.Runtime.InteropServices;
 using System.Threading;
 using SkiaSharp;
 using ViewFaceCore;
@@ -13,22 +14,42 @@ using ViewFaceCore.Core;
 using ViewFaceCore.Models;
 using ShotSort.Models;
 using ShotSort.Utils;
+using VFEyeState = ViewFaceCore.Models.EyeState;
 
 namespace ShotSort.Core
 {
     public class ViewFaceDetector : IDisposable
     {
+        [DllImport("ViewFaceBridge", EntryPoint = "Quality_PoseEx", CallingConvention = CallingConvention.Cdecl)]
+        private static extern void NativeQualityOfPoseEx(ref FaceImage img, FaceRect faceRect,
+            FaceMarkPoint[] points, int pointsLength, ref int level, ref float score,
+            float yawLow = 25, float yawHigh = 10, float pitchLow = 20, float pitchHigh = 10,
+            float rollLow = 33.33f, float rollHigh = 16.67f);
+
+        [DllImport("ViewFaceBridge", EntryPoint = "GetQualityOfClarityExHandler", CallingConvention = CallingConvention.Cdecl)]
+        private static extern IntPtr NativeGetClarityExHandler(float blur_thresh = 0.8f, int deviceType = 0);
+
+        [DllImport("ViewFaceBridge", EntryPoint = "Quality_ClarityEx", CallingConvention = CallingConvention.Cdecl)]
+        private static extern void NativeQualityOfClarityEx(IntPtr handler, ref FaceImage img,
+            FaceRect faceRect, FaceMarkPoint[] points, int pointsLength, ref int level, ref float score);
+
+        [DllImport("ViewFaceBridge", EntryPoint = "DisposeQualityOfClarityEx", CallingConvention = CallingConvention.Cdecl)]
+        private static extern void NativeDisposeClarityEx(IntPtr handler);
         private const int MaxDetectWidth = 1920;
         private const int MaxDetectHeight = 1920;
+        private const float SideFaceYawThreshold = 25f;
 
         private FaceDetector? _faceDetector;
+        private FaceDetector? _faceDetectorLowThreshold;
         private FaceLandmarker? _faceLandmarker68;
         private FaceLandmarker? _faceLandmarker5;
         private EyeStateDetector? _eyeStateDetector;
+        private IntPtr _clarityExHandle;
         private bool _disposed;
         private bool _initialized;
         private bool _eyeStateDetectorAvailable;
-        private static bool _hasDumpedLandmarks;
+        private bool _poseExAvailable;
+        private bool _clarityExAvailable;
 
         public bool IsInitialized => _initialized;
         public string? InitError { get; private set; }
@@ -55,7 +76,7 @@ namespace ShotSort.Core
                 };
 
                 _faceDetector = new FaceDetector(faceDetectConfig);
-                DebugLogger.Log("ViewFaceDetector: FaceDetector 创建成功");
+                DebugLogger.Log("ViewFaceDetector: FaceDetector 创建成功 (Threshold=0.7)");
             }
             catch (Exception ex)
             {
@@ -66,8 +87,26 @@ namespace ShotSort.Core
 
             try
             {
+                var lowThresholdConfig = new FaceDetectConfig
+                {
+                    DeviceType = DeviceType.CPU,
+                    FaceSize = 40,
+                    Threshold = 0.3,
+                };
+
+                _faceDetectorLowThreshold = new FaceDetector(lowThresholdConfig);
+                DebugLogger.Log("ViewFaceDetector: FaceDetector(低阈值) 创建成功 (Threshold=0.3, FaceSize=40)");
+            }
+            catch (Exception ex)
+            {
+                _faceDetectorLowThreshold = null;
+                DebugLogger.LogError("ViewFaceDetector: FaceDetector(低阈值) 初始化失败（非致命）", ex);
+            }
+
+            try
+            {
                 _faceLandmarker68 = new FaceLandmarker(new FaceLandmarkConfig(MarkType.Normal));
-                DebugLogger.Log("ViewFaceDetector: FaceLandmarker68 (68点) 创建成功");
+                DebugLogger.Log("ViewFaceDetector: FaceLandmarker68 创建成功");
             }
             catch (Exception ex)
             {
@@ -79,7 +118,7 @@ namespace ShotSort.Core
             try
             {
                 _faceLandmarker5 = new FaceLandmarker(new FaceLandmarkConfig(MarkType.Light));
-                DebugLogger.Log("ViewFaceDetector: FaceLandmarker5 (5点) 创建成功");
+                DebugLogger.Log("ViewFaceDetector: FaceLandmarker5 创建成功");
             }
             catch (Exception ex)
             {
@@ -96,6 +135,25 @@ namespace ShotSort.Core
             {
                 _eyeStateDetectorAvailable = false;
                 DebugLogger.LogError("ViewFaceDetector: EyeStateDetector 初始化失败（非致命）", ex);
+            }
+
+            // PoseEx 通过直接 P/Invoke 调用，不需要预初始化 handle
+            _poseExAvailable = true;
+            DebugLogger.Log("ViewFaceDetector: PoseEx (侧脸检测) 已就绪");
+
+            try
+            {
+                _clarityExHandle = NativeGetClarityExHandler(0.8f, 0);
+                _clarityExAvailable = _clarityExHandle != IntPtr.Zero;
+                if (_clarityExAvailable)
+                    DebugLogger.Log("ViewFaceDetector: ClarityEx (清晰度评估) 已就绪");
+                else
+                    DebugLogger.Log("ViewFaceDetector: ClarityEx handle 为零，不可用");
+            }
+            catch (Exception ex)
+            {
+                _clarityExAvailable = false;
+                DebugLogger.LogError("ViewFaceDetector: ClarityEx 初始化失败（非致命）", ex);
             }
 
             _initialized = true;
@@ -170,6 +228,7 @@ namespace ShotSort.Core
                     return CreateEmptyResult();
                 }
 
+                DebugLogger.Log($"Detect: 处理 {Path.GetFileName(imagePath)} (原始→bitmap={skBitmap.Width}x{skBitmap.Height})");
                 return DetectFromSkBitmap(skBitmap, fullAnalysis);
             }
             catch (Exception ex)
@@ -184,124 +243,171 @@ namespace ShotSort.Core
             var result = new ClassifyResult
             {
                 HasFace = false,
+                FaceCount = 0,
                 EyeState = Models.EyeState.Open,
                 ClarityScore = 0,
-                IsBlur = false
+                IsBlur = false,
+                LowConfidenceFace = false,
+                LowQualityFace = false
             };
 
             try
             {
                 using var faceImage = skBitmap.ToFaceImage();
+                var sw = System.Diagnostics.Stopwatch.StartNew();
                 var faces = _faceDetector!.Detect(faceImage);
-                DebugLogger.Log($"Detect: FaceDetect 返回 {faces?.Length ?? 0} 张人脸, fullAnalysis={fullAnalysis}");
+                sw.Stop();
+                bool highConfidence = faces != null && faces.Length > 0;
+                DebugLogger.Log($"Detect: bitmap={skBitmap.Width}x{skBitmap.Height}, FaceDetect(阈值=0.7) 返回 {faces?.Length ?? 0} 张人脸, 耗时={sw.ElapsedMilliseconds}ms");
 
-                if (faces == null || faces.Length == 0)
-                    return result;
+                if (faces != null && faces.Length > 0)
+                {
+                    for (int i = 0; i < faces.Length; i++)
+                        DebugLogger.Log($"  face[{i}]: score={faces[i].Score:F3} pos=({faces[i].Location.X},{faces[i].Location.Y}) {faces[i].Location.Width}x{faces[i].Location.Height}");
+                }
+
+                if (!highConfidence)
+                {
+                    // 0.7 阈值未检出，使用 0.3 低阈值回退检测
+                    DebugLogger.Log($"Detect: 0.7阈值未检出，尝试0.3低阈值回退检测...");
+                    var fallbackFaces = DetectWithFallbackThreshold(faceImage);
+                    if (fallbackFaces != null && fallbackFaces.Length > 0)
+                    {
+                        DebugLogger.Log($"Detect: 0.3阈值回退检测到 {fallbackFaces.Length} 张人脸（低置信度人像）！");
+                        for (int i = 0; i < fallbackFaces.Length; i++)
+                            DebugLogger.Log($"  fallback face[{i}]: score={fallbackFaces[i].Score:F3} pos=({fallbackFaces[i].Location.X},{fallbackFaces[i].Location.Y}) {fallbackFaces[i].Location.Width}x{fallbackFaces[i].Location.Height}");
+                        faces = fallbackFaces;
+                        result.LowConfidenceFace = true;
+                    }
+                    else
+                    {
+                        DebugLogger.Log($"Detect: 0.3阈值仍无人脸，图片不含人像 (bitmap={skBitmap.Width}x{skBitmap.Height})");
+                        return result;
+                    }
+                }
 
                 result.HasFace = true;
+                result.FaceCount = faces!.Length;
 
                 if (!fullAnalysis)
                     return result;
 
-                int closedEyeCount = 0;
+                // 低置信度人像：跳过闭眼/质量检测（画面模糊，检测结果不可靠）
+                if (result.LowConfidenceFace)
+                {
+                    DebugLogger.Log($"Detect: 低置信度人像，跳过闭眼/质量检测");
+                    return result;
+                }
+
+                // 多人照片（>3人）：跳过闭眼/质量检测（景深原因，远距离人像模糊属正常）
+                if (faces.Length > 3)
+                {
+                    DebugLogger.Log($"Detect: {faces.Length}张人脸 → 多人场景，跳过闭眼/质量检测");
+                    return result;
+                }
+
+                // === 1-3人照片：进行闭眼检测 + ClarityEx 质量评估 ===
+                bool anyClosed = false;
+                bool anyLowQuality = false;
 
                 for (int faceIdx = 0; faceIdx < faces.Length; faceIdx++)
                 {
                     var face = faces[faceIdx];
-
-                    // 获取 68 点关键点
                     var markPoints68 = _faceLandmarker68!.Mark(faceImage, face);
-                    DebugLogger.Log($"  人脸#{faceIdx + 1} 位置=({face.Location.X},{face.Location.Y}) {face.Location.Width}x{face.Location.Height} pts68={markPoints68?.Length ?? 0}");
-
                     if (markPoints68 == null || markPoints68.Length < 48)
-                    {
-                        DebugLogger.Log($"  人脸#{faceIdx + 1} 68点不足，跳过");
                         continue;
-                    }
 
-                    // 首次 dump 关键点
-                    if (!_hasDumpedLandmarks)
-                    {
-                        DumpLandmarkPoints(markPoints68, faceIdx);
-                        _hasDumpedLandmarks = true;
-                    }
-
-                    // === 方法1: EAR (68点几何计算) ===
-                    double leftEar = CalcEar(markPoints68, 36, 37, 38, 39, 40, 41);
-                    double rightEar = CalcEar(markPoints68, 42, 43, 44, 45, 46, 47);
-                    DebugLogger.Log($"  人脸#{faceIdx + 1} EAR: 左={leftEar:F3} 右={rightEar:F3}");
-
-                    // === 方法2: EyeStateDetector (native) 使用 68 点 ===
-                    EyeStateResult? eyeResult68 = null;
-                    if (_eyeStateDetectorAvailable)
+                    // === ClarityEx 清晰度评估 ===
+                    if (_clarityExAvailable)
                     {
                         try
                         {
-                            eyeResult68 = _eyeStateDetector!.Detect(faceImage, markPoints68);
-                            DebugLogger.Log($"  人脸#{faceIdx + 1} EyeStateDetector(68点): 左={eyeResult68.LeftEyeState}({(int)eyeResult68.LeftEyeState}) 右={eyeResult68.RightEyeState}({(int)eyeResult68.RightEyeState})");
+                            var (clarityLevel, clarityScore) = EvaluateClarity(faceImage, face.Location, markPoints68);
+                            bool isLowQuality = clarityLevel <= 0;
+                            DebugLogger.Log($"  人物#{faceIdx + 1} ClarityEx: level={clarityLevel} score={clarityScore:F3} → {(isLowQuality ? "低质量" : "清晰")}");
+                            if (isLowQuality) anyLowQuality = true;
+                            if (faceIdx == 0) result.ClarityScore = clarityScore;
                         }
                         catch (Exception ex)
                         {
-                            DebugLogger.LogError($"  人脸#{faceIdx + 1} EyeStateDetector(68点) 异常", ex);
+                            DebugLogger.LogError($"  人物#{faceIdx + 1} ClarityEx 异常", ex);
                         }
                     }
 
-                    // === 方法3: EyeStateDetector (native) 使用 5 点 ===
+                    // === PoseEx 侧脸检测 ===
+                    float yaw = 0;
+                    bool isSideFace = false;
+                    bool? rightEyeOccluded = null;
+
+                    if (_poseExAvailable)
+                    {
+                        try
+                        {
+                            yaw = DetectPoseYaw(faceImage, face, markPoints68);
+                            isSideFace = Math.Abs(yaw) > SideFaceYawThreshold;
+                            if (isSideFace)
+                                rightEyeOccluded = yaw > 0;
+                            DebugLogger.Log($"  人物#{faceIdx + 1} PoseEx: yaw={yaw:F1}° 侧脸={isSideFace} 遮挡眼={(rightEyeOccluded == true ? "右" : rightEyeOccluded == false ? "左" : "无")}");
+                        }
+                        catch (Exception ex)
+                        {
+                            DebugLogger.LogError($"  人物#{faceIdx + 1} PoseEx 异常", ex);
+                        }
+                    }
+
+                    // === EyeStateDetector(5点) ===
                     EyeStateResult? eyeResult5 = null;
                     if (_eyeStateDetectorAvailable && _faceLandmarker5 != null)
                     {
                         try
                         {
-                            var markPoints5 = _faceLandmarker5.Mark(faceImage, face);
-                            DebugLogger.Log($"  人脸#{faceIdx + 1} pts5={markPoints5?.Length ?? 0}");
-                            if (markPoints5 != null && markPoints5.Length > 0)
-                            {
-                                eyeResult5 = _eyeStateDetector!.Detect(faceImage, markPoints5);
-                                DebugLogger.Log($"  人脸#{faceIdx + 1} EyeStateDetector(5点): 左={eyeResult5.LeftEyeState}({(int)eyeResult5.LeftEyeState}) 右={eyeResult5.RightEyeState}({(int)eyeResult5.RightEyeState})");
-                            }
+                            var pts5 = _faceLandmarker5.Mark(faceImage, face);
+                            if (pts5 != null && pts5.Length > 0)
+                                eyeResult5 = _eyeStateDetector!.Detect(faceImage, pts5);
                         }
-                        catch (Exception ex)
-                        {
-                            DebugLogger.LogError($"  人脸#{faceIdx + 1} EyeStateDetector(5点) 异常", ex);
-                        }
+                        catch { }
                     }
 
-                    // 综合判断：优先使用 EyeStateDetector(5点) > EyeStateDetector(68点) > EAR
-                    bool isClosed = false;
-                    string method = "";
-
-                    if (eyeResult5 != null && eyeResult5.LeftEyeState != ViewFaceCore.Models.EyeState.Random && eyeResult5.RightEyeState != ViewFaceCore.Models.EyeState.Random)
+                    // === EyeStateDetector(68点) ===
+                    EyeStateResult? eyeResult68 = null;
+                    if (_eyeStateDetectorAvailable)
                     {
-                        bool l5 = eyeResult5.LeftEyeState == ViewFaceCore.Models.EyeState.Close;
-                        bool r5 = eyeResult5.RightEyeState == ViewFaceCore.Models.EyeState.Close;
-                        isClosed = l5 || r5;
-                        method = $"EyeState5点(左={eyeResult5.LeftEyeState},右={eyeResult5.RightEyeState})";
-                    }
-                    else if (eyeResult68 != null && eyeResult68.LeftEyeState != ViewFaceCore.Models.EyeState.Random && eyeResult68.RightEyeState != ViewFaceCore.Models.EyeState.Random)
-                    {
-                        bool l68 = eyeResult68.LeftEyeState == ViewFaceCore.Models.EyeState.Close;
-                        bool r68 = eyeResult68.RightEyeState == ViewFaceCore.Models.EyeState.Close;
-                        isClosed = l68 || r68;
-                        method = $"EyeState68点(左={eyeResult68.LeftEyeState},右={eyeResult68.RightEyeState})";
-                    }
-                    else
-                    {
-                        // EAR fallback
-                        const double earThreshold = 0.19;
-                        isClosed = leftEar < earThreshold || rightEar < earThreshold;
-                        method = $"EAR(左={leftEar:F3},右={rightEar:F3},阈值={earThreshold})";
+                        try { eyeResult68 = _eyeStateDetector!.Detect(faceImage, markPoints68); }
+                        catch { }
                     }
 
-                    if (isClosed) closedEyeCount++;
-                    DebugLogger.Log($"  人脸#{faceIdx + 1} 判定: {(isClosed ? "闭眼" : "睁眼")} 方法={method}");
+                    // === EAR (68点几何) ===
+                    double leftEar = CalcEar(markPoints68, 36, 37, 38, 39, 40, 41);
+                    double rightEar = CalcEar(markPoints68, 42, 43, 44, 45, 46, 47);
+
+                    // === 像素分析 ===
+                    double leftDarkRatio = AnalyzeEyePixels(skBitmap, markPoints68, true);
+                    double rightDarkRatio = AnalyzeEyePixels(skBitmap, markPoints68, false);
+
+                    // === 综合判断（侧脸感知）===
+                    bool leftClosed = DetermineEyeClosed(
+                        eyeResult5?.LeftEyeState, eyeResult68?.LeftEyeState, leftEar,
+                        skBitmap, markPoints68, true, rightEyeOccluded == false, out string leftMethod);
+                    bool rightClosed = DetermineEyeClosed(
+                        eyeResult5?.RightEyeState, eyeResult68?.RightEyeState, rightEar,
+                        skBitmap, markPoints68, false, rightEyeOccluded == true, out string rightMethod);
+
+                    bool faceClosed = leftClosed || rightClosed;
+                    if (faceClosed) anyClosed = true;
+
+                    DebugLogger.Log($"  人物#{faceIdx + 1} ({face.Location.X},{face.Location.Y}) {face.Location.Width}x{face.Location.Height}" +
+                        $" | EyeState5=({eyeResult5?.LeftEyeState}/{eyeResult5?.RightEyeState})" +
+                        $" EyeState68=({eyeResult68?.LeftEyeState}/{eyeResult68?.RightEyeState})" +
+                        $" EAR=({leftEar:F3}/{rightEar:F3})" +
+                        $" 暗比=({leftDarkRatio:F3}/{rightDarkRatio:F3})" +
+                        $" yaw={yaw:F1}°" +
+                        $" → {(faceClosed ? "闭眼" : "睁眼")} [左:{leftMethod} 右:{rightMethod}]");
                 }
 
-                if (closedEyeCount >= 2)
-                    result.EyeState = Models.EyeState.MultiClosed;
-                else if (closedEyeCount == 1)
-                    result.EyeState = Models.EyeState.BothClosed;
-
-                DebugLogger.Log($"Detect: {faces.Length}张人脸中 {closedEyeCount} 人闭眼, 最终EyeState={result.EyeState}");
+                if (anyClosed)
+                    result.EyeState = Models.EyeState.Closed;
+                if (anyLowQuality)
+                    result.LowQualityFace = true;
             }
             catch (Exception ex)
             {
@@ -311,16 +417,197 @@ namespace ShotSort.Core
             return result;
         }
 
-        private void DumpLandmarkPoints(FaceMarkPoint[] points, int faceIdx)
+        /// <summary>
+        /// 使用低阈值检测器回退检测，用于略微模糊照片的人脸识别。
+        /// </summary>
+        private FaceInfo[] DetectWithFallbackThreshold(FaceImage faceImage)
         {
-            DebugLogger.Log($"=== 人脸#{faceIdx} 68点坐标 dump ===");
-            // 只 dump 眼部关键点 (36-47) 和前几个点
-            for (int i = 0; i < Math.Min(20, points.Length); i++)
-                DebugLogger.Log($"  点[{i}] = ({points[i].X:F1}, {points[i].Y:F1})");
-            DebugLogger.Log("  ... (省略中间点) ...");
-            for (int i = 36; i < Math.Min(48, points.Length); i++)
-                DebugLogger.Log($"  点[{i}] = ({points[i].X:F1}, {points[i].Y:F1})");
-            DebugLogger.Log("=== dump 结束 ===");
+            if (_faceDetectorLowThreshold == null)
+            {
+                DebugLogger.Log("DetectWithFallbackThreshold: 低阈值检测器不可用");
+                return Array.Empty<FaceInfo>();
+            }
+
+            try
+            {
+                var sw = System.Diagnostics.Stopwatch.StartNew();
+                var faces = _faceDetectorLowThreshold.Detect(faceImage);
+                sw.Stop();
+                DebugLogger.Log($"DetectWithFallbackThreshold: 0.3阈值检测返回 {faces?.Length ?? 0} 张人脸, 耗时={sw.ElapsedMilliseconds}ms");
+                return faces ?? Array.Empty<FaceInfo>();
+            }
+            catch (Exception ex)
+            {
+                DebugLogger.LogError("DetectWithFallbackThreshold: 异常", ex);
+                return Array.Empty<FaceInfo>();
+            }
+        }
+
+        /// <summary>
+        /// 通过 PoseEx 获取人脸偏航角(yaw)。
+        /// yaw > 0 → 头向右转（右眼远离镜头）
+        /// yaw &lt; 0 → 头向左转（左眼远离镜头）
+        /// </summary>
+        private static float DetectPoseYaw(FaceImage faceImage, FaceInfo face, FaceMarkPoint[] markPoints)
+        {
+            int level = -1;
+            float score = -1;
+            NativeQualityOfPoseEx(ref faceImage, face.Location, markPoints, markPoints.Length,
+                ref level, ref score,
+                yawLow: SideFaceYawThreshold, yawHigh: 10,
+                pitchLow: 20, pitchHigh: 10,
+                rollLow: 33.33f, rollHigh: 16.67f);
+            return score;
+        }
+
+        /// <summary>
+        /// 通过 ClarityEx 评估人脸清晰度。
+        /// 返回 (level, score)，level: Low=0, Medium=1, High=2
+        /// </summary>
+        private (int level, float score) EvaluateClarity(FaceImage faceImage, FaceRect faceRect, FaceMarkPoint[] markPoints)
+        {
+            int level = -1;
+            float score = -1;
+            NativeQualityOfClarityEx(_clarityExHandle, ref faceImage, faceRect,
+                markPoints, markPoints.Length, ref level, ref score);
+            return (level, score);
+        }
+
+        /// <summary>
+        /// 综合多种方法判断单眼是否闭合，支持侧脸感知。
+        /// 
+        /// 优先级：EyeState5点 > EyeState68点 > 像素分析 > EAR
+        /// 
+        /// 侧脸逻辑：
+        /// - 正面：两眼都可见，Random/Unknown → 保守视为闭眼
+        /// - 侧脸遮挡眼：Random/Unknown 是因为看不到眼，不应视为闭眼，跳过此眼
+        /// - 侧脸可见眼：仍然正常判断 Close/Unknown→闭眼
+        /// </summary>
+        private bool DetermineEyeClosed(VFEyeState? eyeState5, VFEyeState? eyeState68,
+            double ear, SKBitmap? bitmap, FaceMarkPoint[]? markPoints, bool isLeftEye,
+            bool isOccludedBySideFace, out string method)
+        {
+            // 侧脸遮挡的眼：Random/Unknown 是因为看不到，不视为闭眼
+            if (isOccludedBySideFace)
+            {
+                // 只有明确 Close 才算闭眼（通过可见部分的线索判断）
+                if (eyeState5.HasValue && eyeState5.Value == VFEyeState.Close)
+                { method = "5点Close(侧脸遮挡)"; return true; }
+                if (eyeState68.HasValue && eyeState68.Value == VFEyeState.Close)
+                { method = "68点Close(侧脸遮挡)"; return true; }
+
+                // Random/Unknown 在侧脸遮挡情况下视为"无法判断"而非"闭眼"
+                if (eyeState5.HasValue && eyeState5.Value == VFEyeState.Open)
+                { method = "5点Open(侧脸遮挡)"; return false; }
+                if (eyeState68.HasValue && eyeState68.Value == VFEyeState.Open)
+                { method = "68点Open(侧脸遮挡)"; return false; }
+
+                // 所有方法都无效时，侧脸遮挡眼不判定为闭眼
+                method = "侧脸遮挡→跳过";
+                return false;
+            }
+
+            // === 以下为正面或侧脸可见眼的判断逻辑 ===
+
+            // EyeStateDetector(5点)
+            if (eyeState5.HasValue)
+            {
+                if (eyeState5.Value == VFEyeState.Close) { method = "5点Close"; return true; }
+                if (eyeState5.Value == VFEyeState.Unknown) { method = "5点Unknown→闭眼"; return true; }
+                if (eyeState5.Value == VFEyeState.Open) { method = "5点Open"; return false; }
+                // Random → 回退
+            }
+
+            // EyeStateDetector(68点)
+            if (eyeState68.HasValue)
+            {
+                if (eyeState68.Value == VFEyeState.Close) { method = "68点Close"; return true; }
+                if (eyeState68.Value == VFEyeState.Unknown) { method = "68点Unknown→闭眼"; return true; }
+                if (eyeState68.Value == VFEyeState.Open) { method = "68点Open"; return false; }
+                // Random → 回退
+            }
+
+            // 像素分析 fallback
+            if (bitmap != null && markPoints != null && markPoints.Length >= 48)
+            {
+                double darkRatio = AnalyzeEyePixels(bitmap, markPoints, isLeftEye);
+                const double darkRatioThreshold = 0.15;
+                if (darkRatio < darkRatioThreshold)
+                {
+                    method = $"像素暗比={darkRatio:F3}<{darkRatioThreshold}";
+                    return true;
+                }
+                method = $"像素暗比={darkRatio:F3}>={darkRatioThreshold}";
+                return false;
+            }
+
+            // EAR fallback
+            const double earThreshold = 0.24;
+            if (ear < earThreshold)
+            {
+                method = $"EAR={ear:F3}<{earThreshold}";
+                return true;
+            }
+
+            method = $"EAR={ear:F3}>={earThreshold}";
+            return false;
+        }
+
+        /// <summary>
+        /// 像素级眼部分析：裁剪眼部区域，计算暗像素比例。
+        /// 睁眼：可见虹膜/瞳孔（暗色），暗像素比例高。
+        /// 闭眼：只有眼睑（皮肤色），暗像素比例低。
+        /// </summary>
+        private static double AnalyzeEyePixels(SKBitmap bitmap, FaceMarkPoint[] pts, bool isLeftEye)
+        {
+            int startIdx = isLeftEye ? 36 : 42;
+            double minX = double.MaxValue, minY = double.MaxValue;
+            double maxX = double.MinValue, maxY = double.MinValue;
+
+            for (int i = startIdx; i < startIdx + 6; i++)
+            {
+                if (pts[i].X < minX) minX = pts[i].X;
+                if (pts[i].Y < minY) minY = pts[i].Y;
+                if (pts[i].X > maxX) maxX = pts[i].X;
+                if (pts[i].Y > maxY) maxY = pts[i].Y;
+            }
+
+            int pad = (int)Math.Max(3, (maxX - minX) * 0.3);
+            int x0 = Math.Max(0, (int)minX - pad);
+            int y0 = Math.Max(0, (int)minY - pad);
+            int x1 = Math.Min(bitmap.Width - 1, (int)maxX + pad);
+            int y1 = Math.Min(bitmap.Height - 1, (int)maxY + pad);
+
+            int w = x1 - x0 + 1;
+            int h = y1 - y0 + 1;
+            if (w <= 0 || h <= 0) return 0.5;
+
+            long totalBrightness = 0;
+            int pixelCount = w * h;
+            for (int y = y0; y <= y1; y++)
+            {
+                for (int x = x0; x <= x1; x++)
+                {
+                    var c = bitmap.GetPixel(x, y);
+                    totalBrightness += (c.Red * 77 + c.Green * 150 + c.Blue * 29) >> 8;
+                }
+            }
+
+            double avgBrightness = (double)totalBrightness / pixelCount;
+            double darkThreshold = avgBrightness * 0.45;
+
+            int darkCount = 0;
+            for (int y = y0; y <= y1; y++)
+            {
+                for (int x = x0; x <= x1; x++)
+                {
+                    var c = bitmap.GetPixel(x, y);
+                    int brightness = (c.Red * 77 + c.Green * 150 + c.Blue * 29) >> 8;
+                    if (brightness < darkThreshold) darkCount++;
+                }
+            }
+
+            return (double)darkCount / pixelCount;
         }
 
         private static double CalcEar(FaceMarkPoint[] pts, int i1, int i2, int i3, int i4, int i5, int i6)
@@ -349,7 +636,6 @@ namespace ShotSort.Core
             }
 
             DebugLogger.Log($"BatchDetect: 开始批量检测，共 {imagePaths.Count} 张图片 (fullAnalysis={fullAnalysis})");
-            _hasDumpedLandmarks = false;
             var results = new List<ClassifyResult>(imagePaths.Count);
 
             var decodeQueue = new BlockingCollection<(int index, SKBitmap? bitmap)>(2);
@@ -422,9 +708,12 @@ namespace ShotSort.Core
         private static ClassifyResult CreateEmptyResult() => new()
         {
             HasFace = false,
+            FaceCount = 0,
             EyeState = Models.EyeState.Open,
             ClarityScore = 0,
-            IsBlur = false
+            IsBlur = false,
+            LowConfidenceFace = false,
+            LowQualityFace = false
         };
 
         public void Dispose()
@@ -432,9 +721,14 @@ namespace ShotSort.Core
             if (!_disposed)
             {
                 _faceDetector?.Dispose();
+                _faceDetectorLowThreshold?.Dispose();
                 _faceLandmarker68?.Dispose();
                 _faceLandmarker5?.Dispose();
                 _eyeStateDetector?.Dispose();
+                if (_clarityExAvailable && _clarityExHandle != IntPtr.Zero)
+                {
+                    try { NativeDisposeClarityEx(_clarityExHandle); } catch { }
+                }
                 _disposed = true;
             }
         }

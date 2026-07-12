@@ -43,7 +43,7 @@ namespace ShotSort.Forms
             }
             else
             {
-                lblMode.Text = "手动快速分类模式";
+                lblMode.Text = "浏览模式";
                 chkDeleteRaw.Visible = false;
                 lblKeyDelete.Text = "Space 待删除";
             }
@@ -109,25 +109,40 @@ namespace ShotSort.Forms
             }
         }
 
-        private void LblPersonBanner_Paint(object sender, PaintEventArgs e)
+        private void TagLabel_Paint(object? sender, PaintEventArgs e)
         {
             if (sender is not Label lbl) return;
             e.Graphics.SmoothingMode = SmoothingMode.AntiAlias;
 
             var rect = new Rectangle(0, 0, lbl.Width, lbl.Height);
-            using var path = RoundedRect(rect, 0);
-            using var brush = new LinearGradientBrush(
-                rect,
-                Color.FromArgb(239, 68, 68),
-                Color.FromArgb(220, 38, 38),
-                LinearGradientMode.Horizontal);
+            using var path = RoundedRect(rect, 4);
+            Color bgColor = lbl.Tag is Color c ? c : Color.FromArgb(100, 100, 100);
+            using var brush = new SolidBrush(bgColor);
             e.Graphics.FillPath(brush, path);
 
-            using var font = new Font("Microsoft YaHei UI", 12F, FontStyle.Bold);
+            using var font = new Font("Microsoft YaHei UI", 8.5F, FontStyle.Bold);
             using var textBrush = new SolidBrush(Color.White);
             var sf = new StringFormat { Alignment = StringAlignment.Center, LineAlignment = StringAlignment.Center };
             e.Graphics.TextRenderingHint = System.Drawing.Text.TextRenderingHint.AntiAlias;
             e.Graphics.DrawString(lbl.Text, font, textBrush, rect, sf);
+        }
+
+        private void AddTag(string text, Color bgColor)
+        {
+            var lbl = new Label();
+            lbl.Text = text;
+            lbl.Tag = bgColor;
+            lbl.AutoSize = false;
+
+            using var g = CreateGraphics();
+            using var font = new Font("Microsoft YaHei UI", 8.5F, FontStyle.Bold);
+            var size = g.MeasureString(text, font);
+            lbl.Width = (int)size.Width + 18;
+            lbl.Height = 24;
+            lbl.Margin = new Padding(0, 0, 0, 4);
+            lbl.Paint += TagLabel_Paint;
+            panelTags.Controls.Add(lbl);
+            panelTags.Visible = true;
         }
 
         private void LblTooltip_Paint(object sender, PaintEventArgs e)
@@ -307,57 +322,47 @@ namespace ShotSort.Forms
 
         private void UpdateInfoLabel(PhotoItem photo)
         {
-            var info = photo.FileName;
-
-            lblPersonBanner.Visible = false;
+            lblInfo.Text = photo.FileName;
+            panelTags.Controls.Clear();
+            panelTags.Visible = false;
 
             if (_isAiMode && photo.AiResult != null)
             {
                 var ai = photo.AiResult;
                 if (!ai.HasFace)
                 {
-                    info += "  |  无人像";
+                    AddTag("无人像", Color.FromArgb(107, 114, 128));
                 }
                 else
                 {
-                    var bannerText = "有人像";
-                    var bannerColor = Color.FromArgb(16, 185, 129);
+                    if (ai.FaceCount > 3)
+                    {
+                        AddTag("多人照片", Color.FromArgb(59, 130, 246));
+                    }
+                    else if (ai.FaceCount > 1)
+                    {
+                        AddTag("合影", Color.FromArgb(16, 185, 129));
 
-                    if (ai.EyeState == EyeState.BothClosed)
-                    {
-                        info += "  |  闭眼";
-                        bannerText = "闭眼";
-                        bannerColor = Color.FromArgb(245, 158, 11);
+                        if (ai.EyeState == EyeState.Closed)
+                            AddTag("闭眼", Color.FromArgb(245, 158, 11));
                     }
-                    else if (ai.EyeState == EyeState.OneEyeClosed)
+                    else
                     {
-                        info += "  |  单眼闭";
-                        bannerText = "单眼闭";
-                        bannerColor = Color.FromArgb(245, 158, 11);
+                        AddTag("人像", Color.FromArgb(16, 185, 129));
+
+                        if (ai.EyeState == EyeState.Closed)
+                            AddTag("闭眼", Color.FromArgb(245, 158, 11));
                     }
-                    else if (ai.EyeState == EyeState.MultiClosed)
-                    {
-                        info += "  |  多人闭眼";
-                        bannerText = "多人闭眼";
-                        bannerColor = Color.FromArgb(245, 158, 11);
-                    }
+
                     if (ai.IsBlur)
-                    {
-                        info += "  |  模糊";
-                        bannerText = "模糊";
-                        bannerColor = Color.FromArgb(239, 68, 68);
-                    }
-
-                    lblPersonBanner.Text = bannerText;
-                    lblPersonBanner.BackColor = bannerColor;
-                    lblPersonBanner.Visible = true;
+                        AddTag("模糊", Color.FromArgb(239, 68, 68));
                 }
             }
 
             if (photo.PairedRawPath != null)
-                info += "  |  含RAW";
+                AddTag("含RAW", Color.FromArgb(59, 130, 246));
 
-            lblInfo.Text = info;
+            panelTags.Location = new Point(16, lblInfo.Bottom + 2);
         }
 
         private void UpdateProgress()
@@ -596,6 +601,7 @@ namespace ShotSort.Forms
             _loadCts?.Dispose();
             pictureBox.Image?.Dispose();
             pictureBox.Image = null;
+            panelTags.Controls.Clear();
             base.OnFormClosed(e);
         }
     }

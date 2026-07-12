@@ -10,6 +10,8 @@ namespace ShotSort.Models
     {
         None,
         HasPerson,
+        LowConfidencePerson,
+        LowQualityPerson,
         Selected,
         Kept,
         PendingDelete

@@ -25,7 +25,7 @@ namespace ShotSort.Forms
             this.lblProgress = new System.Windows.Forms.Label();
             this.pictureBox = new System.Windows.Forms.PictureBox();
             this.lblInfo = new System.Windows.Forms.Label();
-            this.lblPersonBanner = new System.Windows.Forms.Label();
+            this.panelTags = new System.Windows.Forms.FlowLayoutPanel();
             this.lblTooltip = new System.Windows.Forms.Label();
             this.tooltipTimer = new System.Windows.Forms.Timer();
             this.panelBottom = new System.Windows.Forms.Panel();
@@ -132,20 +132,18 @@ namespace ShotSort.Forms
             this.lblInfo.TabIndex = 3;
             this.lblInfo.Visible = true;
             //
-            // lblPersonBanner
+            // panelTags
             //
-            this.lblPersonBanner.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(239)))), ((int)(((byte)(68)))), ((int)(((byte)(68)))));
-            this.lblPersonBanner.Font = new System.Drawing.Font("Microsoft YaHei UI", 18F, System.Drawing.FontStyle.Bold);
-            this.lblPersonBanner.ForeColor = System.Drawing.Color.White;
-            this.lblPersonBanner.Location = new System.Drawing.Point(0, 56);
-            this.lblPersonBanner.Name = "lblPersonBanner";
-            this.lblPersonBanner.Padding = new System.Windows.Forms.Padding(20, 8, 20, 8);
-            this.lblPersonBanner.Size = new System.Drawing.Size(200, 44);
-            this.lblPersonBanner.TabIndex = 4;
-            this.lblPersonBanner.Text = "有人像";
-            this.lblPersonBanner.TextAlign = System.Drawing.ContentAlignment.MiddleLeft;
-            this.lblPersonBanner.Visible = false;
-            this.lblPersonBanner.Paint += new System.Windows.Forms.PaintEventHandler(this.LblPersonBanner_Paint);
+            this.panelTags.AutoSize = true;
+            this.panelTags.AutoSizeMode = System.Windows.Forms.AutoSizeMode.GrowAndShrink;
+            this.panelTags.BackColor = System.Drawing.Color.Transparent;
+            this.panelTags.FlowDirection = System.Windows.Forms.FlowDirection.TopDown;
+            this.panelTags.Location = new System.Drawing.Point(16, 105);
+            this.panelTags.Name = "panelTags";
+            this.panelTags.Size = new System.Drawing.Size(0, 0);
+            this.panelTags.TabIndex = 4;
+            this.panelTags.Visible = false;
+            this.panelTags.WrapContents = false;
             //
             // lblTooltip
             //
@@ -254,13 +252,14 @@ namespace ShotSort.Forms
             this.AutoScaleMode = System.Windows.Forms.AutoScaleMode.Font;
             this.BackColor = System.Drawing.Color.FromArgb(((int)(((byte)(15)))), ((int)(((byte)(15)))), ((int)(((byte)(18)))));
             this.ClientSize = new System.Drawing.Size(1000, 700);
-            this.Controls.Add(this.lblPersonBanner);
+            this.Controls.Add(this.panelTags);
             this.Controls.Add(this.lblInfo);
             this.Controls.Add(this.lblTooltip);
             this.Controls.Add(this.pictureBox);
             this.Controls.Add(this.panelBottom);
             this.Controls.Add(this.panelTop);
             this.KeyPreview = true;
+            this.Icon = global::ShotSort.Properties.Resources.AppIcon;
             this.Name = "ImageBrowserForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Text = "ShotSort - 照片浏览";
@@ -285,7 +284,7 @@ namespace ShotSort.Forms
         private System.Windows.Forms.Label lblProgress;
         private System.Windows.Forms.PictureBox pictureBox;
         private System.Windows.Forms.Label lblInfo;
-        private System.Windows.Forms.Label lblPersonBanner;
+        private System.Windows.Forms.FlowLayoutPanel panelTags;
         private System.Windows.Forms.Label lblTooltip;
         private System.Windows.Forms.Timer tooltipTimer;
         private System.Windows.Forms.Panel panelBottom;

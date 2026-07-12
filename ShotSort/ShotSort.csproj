@@ -6,8 +6,10 @@
     <RootNamespace>ShotSort</RootNamespace>
     <AssemblyName>ShotSort</AssemblyName>
     <UseWindowsForms>true</UseWindowsForms>
-    <ApplicationIcon />
+    <ApplicationIcon>app.ico</ApplicationIcon>
     <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <Version>1.0.0</Version>
   </PropertyGroup>
 
   <ItemGroup>

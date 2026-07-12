@@ -490,6 +490,7 @@ namespace ShotSort.Forms
             this.Controls.Add(this.panelResult);
             this.Controls.Add(this.panelInput);
             this.MinimumSize = new System.Drawing.Size(640, 440);
+            this.Icon = global::ShotSort.Properties.Resources.AppIcon;
             this.Name = "MainForm";
             this.StartPosition = System.Windows.Forms.FormStartPosition.CenterScreen;
             this.Text = "ShotSort - 照片批量分类工具";

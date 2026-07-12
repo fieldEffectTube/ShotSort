@@ -290,6 +290,8 @@ namespace ShotSort.Forms
         private static string CategoryToLabel(PhotoCategory category) => category switch
         {
             PhotoCategory.HasPerson => "有人",
+            PhotoCategory.LowConfidencePerson => "低置信度",
+            PhotoCategory.LowQualityPerson => "低质量",
             PhotoCategory.Selected => "精选",
             PhotoCategory.Kept => "保留",
             PhotoCategory.PendingDelete => "待删除",
@@ -299,6 +301,8 @@ namespace ShotSort.Forms
         private static Color CategoryToColor(PhotoCategory category) => category switch
         {
             PhotoCategory.HasPerson => Color.FromArgb(239, 68, 68),
+            PhotoCategory.LowConfidencePerson => Color.FromArgb(249, 115, 22),
+            PhotoCategory.LowQualityPerson => Color.FromArgb(234, 179, 8),
             PhotoCategory.Selected => Color.FromArgb(16, 185, 129),
             PhotoCategory.Kept => Color.FromArgb(59, 130, 246),
             PhotoCategory.PendingDelete => Color.FromArgb(148, 163, 184),
@@ -724,37 +728,64 @@ namespace ShotSort.Forms
 
             FileSyncManager.EnsureClassifyFolders(_rootPath);
             var personPhotos = new List<PhotoItem>();
+            int lowConfidenceCount = 0;
+            int lowQualityCount = 0;
 
             foreach (var photo in jpgPhotos)
             {
-                if (photo.AiResult?.HasFace == true)
+                if (photo.AiResult?.HasFace != true)
+                    continue;
+
+                // 所有有人像的照片统一放入"有人"文件夹
+                PhotoCategory category;
+                if (photo.AiResult.LowConfidenceFace)
                 {
-                    if (FileSyncManager.MoveToClassify(photo.FilePath, FileSyncManager.FolderHasPerson, _rootPath))
-                    {
-                        photo.FilePath = Path.Combine(_rootPath, FileSyncManager.FolderHasPerson, photo.FileName);
-                        photo.Category = PhotoCategory.HasPerson;
-                        personPhotos.Add(photo);
-                    }
-                    else
-                    {
-                        DebugLogger.Log($"RunAiProcess: 移动失败，跳过 {photo.FileName}");
-                    }
+                    category = PhotoCategory.LowConfidencePerson;
+                    lowConfidenceCount++;
+                }
+                else if (photo.AiResult.LowQualityFace)
+                {
+                    category = PhotoCategory.LowQualityPerson;
+                    lowQualityCount++;
+                }
+                else
+                {
+                    category = PhotoCategory.HasPerson;
+                }
+
+                if (FileSyncManager.MoveToClassify(photo.FilePath, FileSyncManager.FolderHasPerson, _rootPath))
+                {
+                    photo.FilePath = Path.Combine(_rootPath, FileSyncManager.FolderHasPerson, photo.FileName);
+                    photo.Category = category;
+                    personPhotos.Add(photo);
+                }
+                else
+                {
+                    DebugLogger.Log($"RunAiProcess: 移动失败，跳过 {photo.FileName}");
                 }
             }
 
-            DebugLogger.Log($"RunAiProcess: 检测到 {personPhotos.Count} 张有人像照片");
+            int normalCount = personPhotos.Count - lowConfidenceCount - lowQualityCount;
+            DebugLogger.Log($"RunAiProcess: 检测完成 - 人像:{normalCount} 低置信度人像:{lowConfidenceCount} 低质量人像:{lowQualityCount}");
 
             if (personPhotos.Count == 0)
             {
-                MessageBox.Show($"AI 识别完成，未检测到有人像的照片\n（共扫描 {jpgPaths.Count} 张 JPG）", "结果", MessageBoxButtons.OK, MessageBoxIcon.Information);
+                MessageBox.Show($"机器初筛完成，未检测到有人像的照片\n（共扫描 {jpgPaths.Count} 张 JPG）", "结果", MessageBoxButtons.OK, MessageBoxIcon.Information);
                 return;
             }
 
-            MessageBox.Show(
-                $"AI 识别完成！\n检测到 {personPhotos.Count} 张有人像照片\n即将进入人工复核",
-                "AI 初筛完成", MessageBoxButtons.OK, MessageBoxIcon.Information);
+            string summary = $"机器初筛完成！\n\n" +
+                $"人像：{normalCount} 张\n" +
+                $"低置信度人像：{lowConfidenceCount} 张\n" +
+                $"低质量人像：{lowQualityCount} 张\n\n" +
+                $"接下来是否对人像照片进行手动初步核对？\n（之后您仍可以在手动筛选环节看到这些照片）";
 
-            OpenBrowser(personPhotos);
+            var result = MessageBox.Show(summary, "机器初筛完成", MessageBoxButtons.YesNo, MessageBoxIcon.Question);
+
+            if (result == DialogResult.Yes)
+            {
+                OpenBrowser(personPhotos);
+            }
         }
 
         private void CancelAiProcess(object? sender, EventArgs e)
@@ -785,16 +816,16 @@ namespace ShotSort.Forms
             if (index < 0 || index >= _scanResult.Photos.Count) return;
 
             var photo = _scanResult.Photos[index];
-            OpenBrowser(new List<PhotoItem> { photo });
+            OpenBrowser(new List<PhotoItem> { photo }, false);
         }
 
         #region Browser & Navigation
 
-        private void OpenBrowser(List<PhotoItem> photos)
+        private void OpenBrowser(List<PhotoItem> photos, bool? forceIsAiMode = null)
         {
             if (_rootPath == null) return;
 
-            var isAiMode = rbAiMode.Checked;
+            var isAiMode = forceIsAiMode ?? rbAiMode.Checked;
             var browserForm = new ImageBrowserForm(photos, _rootPath, isAiMode);
             Hide();
             browserForm.ShowDialog(this);
